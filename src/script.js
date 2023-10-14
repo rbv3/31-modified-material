@@ -69,37 +69,57 @@ const material = new THREE.MeshStandardMaterial( {
     normalMap: normalTexture
 })
 
+const depthMaterial = new THREE.MeshDepthMaterial({
+    depthPacking: THREE.RGBADepthPacking
+})
+
 const customUniforms = {
     uTime: { value: 0 }
 }
+
+const uniformTimeAndGet2dRotateMatrix = `
+    #include <common>
+
+    uniform float uTime;
+
+    mat2 get2dRotateMatrix(float _angle) {
+        return mat2(
+            cos(_angle), -sin(_angle),
+            sin(_angle), cos(_angle)
+        );
+    }
+`
+const applyRotateMatrix = `
+    #include <begin_vertex>
+
+    float angle = (position.y + uTime)* 0.9;
+    mat2 rotateMatrix = get2dRotateMatrix(angle);
+
+    transformed.xz = transformed.xz * rotateMatrix;
+`
 
 material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = customUniforms.uTime
     shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
-        `
-            #include <common>
-
-            uniform float uTime;
-
-            mat2 get2dRotateMatrix(float _angle) {
-                return mat2(
-                    cos(_angle), -sin(_angle),
-                    sin(_angle), cos(_angle)
-                );
-            }
-        `,
-    );
+        uniformTimeAndGet2dRotateMatrix,
+    )
     shader.vertexShader = shader.vertexShader.replace(
         '#include <begin_vertex>',
-        `
-            #include <begin_vertex>
+        applyRotateMatrix
+    )
+}
+// fix drop shadow
+depthMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = customUniforms.uTime
 
-            float angle = (position.y + uTime)* 0.9;
-            mat2 rotateMatrix = get2dRotateMatrix(angle);
-
-            transformed.xz = transformed.xz * rotateMatrix;
-        `
+    shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        uniformTimeAndGet2dRotateMatrix,
+    )
+    shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        applyRotateMatrix
     )
 }
 
@@ -114,12 +134,24 @@ gltfLoader.load(
         const mesh = gltf.scene.children[0]
         mesh.rotation.y = Math.PI * 0.5
         mesh.material = material
+        mesh.customDepthMaterial = depthMaterial
         scene.add(mesh)
 
         // Update materials
         updateAllMaterials()
     }
 )
+
+// Plane
+const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(15, 15, 15),
+    new THREE.MeshStandardMaterial()
+)
+plane.rotation.y = Math.PI
+plane.position.y = -5
+plane.position.z = 7
+
+scene.add(plane)
 
 /**
  * Lights
